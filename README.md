@@ -118,4 +118,4 @@ swift test --filter WhisprLocalCoreTests.AppStateTests
 
 ## License
 
-Copyright 2026 WhisprLocal. All rights reserved.
+MIT License. See [LICENSE](LICENSE) for details.
