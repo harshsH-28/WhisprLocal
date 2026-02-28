@@ -114,7 +114,8 @@ public final class DictationController {
             try await ensureModelLoaded()
 
             // Transcribe
-            let text = try await transcriber.transcribe(samples: samples)
+            let language = await MainActor.run { self.appState.selectedLanguage }
+            let text = try await transcriber.transcribe(samples: samples, language: language)
 
             _ = await MainActor.run {
                 self.appState.lastTranscription = text

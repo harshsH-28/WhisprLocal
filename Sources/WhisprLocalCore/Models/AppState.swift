@@ -28,6 +28,9 @@ public final class AppState {
     /// Whether the selected model file exists on disk.
     public var isModelAvailable: Bool = false
 
+    /// Selected language for transcription. "auto" = whisper auto-detect.
+    public var selectedLanguage: String = "auto"
+
     /// Whether initial setup is complete (all permissions granted and model available).
     public var isSetupComplete: Bool {
         hasMicrophonePermission && hasAccessibilityPermission && isModelAvailable

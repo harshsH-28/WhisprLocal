@@ -44,7 +44,10 @@ public actor WhisperTranscriber {
     }
 
     /// Transcribe audio samples (16kHz mono Float32) to text.
-    public func transcribe(samples: [Float]) throws -> String {
+    /// - Parameters:
+    ///   - samples: Audio samples at 16kHz mono Float32.
+    ///   - language: Language code (e.g. "en", "hi") or "auto" for auto-detection.
+    public func transcribe(samples: [Float], language: String = "auto") throws -> String {
         guard let ctx = context else { throw TranscriberError.modelNotLoaded }
         guard !samples.isEmpty else { throw TranscriberError.emptyAudio }
 
@@ -58,8 +61,13 @@ public actor WhisperTranscriber {
         params.no_timestamps = true
         params.n_threads = Int32(max(1, ProcessInfo.processInfo.activeProcessorCount - 2))
 
-        let result = samples.withUnsafeBufferPointer { buffer in
-            whisper_full(ctx, params, buffer.baseAddress, Int32(buffer.count))
+        let result: Int32 = language.withCString { cString in
+            if language != "auto" {
+                params.language = cString
+            }
+            return samples.withUnsafeBufferPointer { buffer in
+                whisper_full(ctx, params, buffer.baseAddress, Int32(buffer.count))
+            }
         }
 
         guard result == 0 else { throw TranscriberError.transcriptionFailed }

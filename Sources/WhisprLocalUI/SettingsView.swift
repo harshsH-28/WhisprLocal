@@ -38,6 +38,55 @@ public struct SettingsView: View {
 
 private struct GeneralSettingsTab: View {
     let controller: DictationController
+    @State private var showAllLanguages = false
+
+    private static let commonLanguages: [(code: String, name: String)] = [
+        ("auto", "Auto-Detect"),
+        ("en", "English"),
+        ("zh", "Chinese"),
+        ("de", "German"),
+        ("es", "Spanish"),
+        ("ru", "Russian"),
+        ("ko", "Korean"),
+        ("fr", "French"),
+        ("ja", "Japanese"),
+        ("pt", "Portuguese"),
+        ("tr", "Turkish"),
+        ("pl", "Polish"),
+        ("it", "Italian"),
+        ("hi", "Hindi"),
+        ("ar", "Arabic"),
+        ("nl", "Dutch"),
+    ]
+
+    private static let allLanguages: [(code: String, name: String)] = [
+        ("auto", "Auto-Detect"),
+        ("af", "Afrikaans"), ("am", "Amharic"), ("ar", "Arabic"), ("as", "Assamese"),
+        ("az", "Azerbaijani"), ("ba", "Bashkir"), ("be", "Belarusian"), ("bg", "Bulgarian"),
+        ("bn", "Bengali"), ("bo", "Tibetan"), ("br", "Breton"), ("bs", "Bosnian"),
+        ("ca", "Catalan"), ("cs", "Czech"), ("cy", "Welsh"), ("da", "Danish"),
+        ("de", "German"), ("el", "Greek"), ("en", "English"), ("es", "Spanish"),
+        ("et", "Estonian"), ("eu", "Basque"), ("fa", "Persian"), ("fi", "Finnish"),
+        ("fo", "Faroese"), ("fr", "French"), ("gl", "Galician"), ("gu", "Gujarati"),
+        ("ha", "Hausa"), ("haw", "Hawaiian"), ("he", "Hebrew"), ("hi", "Hindi"),
+        ("hr", "Croatian"), ("ht", "Haitian Creole"), ("hu", "Hungarian"), ("hy", "Armenian"),
+        ("id", "Indonesian"), ("is", "Icelandic"), ("it", "Italian"), ("ja", "Japanese"),
+        ("jw", "Javanese"), ("ka", "Georgian"), ("kk", "Kazakh"), ("km", "Khmer"),
+        ("kn", "Kannada"), ("ko", "Korean"), ("la", "Latin"), ("lb", "Luxembourgish"),
+        ("ln", "Lingala"), ("lo", "Lao"), ("lt", "Lithuanian"), ("lv", "Latvian"),
+        ("mg", "Malagasy"), ("mi", "Maori"), ("mk", "Macedonian"), ("ml", "Malayalam"),
+        ("mn", "Mongolian"), ("mr", "Marathi"), ("ms", "Malay"), ("mt", "Maltese"),
+        ("my", "Myanmar"), ("ne", "Nepali"), ("nl", "Dutch"), ("nn", "Nynorsk"),
+        ("no", "Norwegian"), ("oc", "Occitan"), ("pa", "Panjabi"), ("pl", "Polish"),
+        ("ps", "Pashto"), ("pt", "Portuguese"), ("ro", "Romanian"), ("ru", "Russian"),
+        ("sa", "Sanskrit"), ("sd", "Sindhi"), ("si", "Sinhala"), ("sk", "Slovak"),
+        ("sl", "Slovenian"), ("sn", "Shona"), ("so", "Somali"), ("sq", "Albanian"),
+        ("sr", "Serbian"), ("su", "Sundanese"), ("sv", "Swedish"), ("sw", "Swahili"),
+        ("ta", "Tamil"), ("te", "Telugu"), ("tg", "Tajik"), ("th", "Thai"),
+        ("tk", "Turkmen"), ("tl", "Tagalog"), ("tr", "Turkish"), ("tt", "Tatar"),
+        ("uk", "Ukrainian"), ("ur", "Urdu"), ("uz", "Uzbek"), ("vi", "Vietnamese"),
+        ("yi", "Yiddish"), ("yo", "Yoruba"), ("yue", "Cantonese"), ("zh", "Chinese"),
+    ]
 
     var body: some View {
         Form {
@@ -47,6 +96,18 @@ private struct GeneralSettingsTab: View {
                     Spacer()
                     KeyboardShortcuts.Recorder(for: .toggleDictation)
                 }
+            }
+
+            Section("Language") {
+                Picker("Language", selection: Bindable(controller.appState).selectedLanguage) {
+                    let languages = showAllLanguages ? Self.allLanguages : Self.commonLanguages
+                    ForEach(languages, id: \.code) { lang in
+                        Text(lang.name).tag(lang.code)
+                    }
+                }
+
+                Toggle("Show all languages", isOn: $showAllLanguages)
+                    .font(.caption)
             }
 
             Section("Status") {
