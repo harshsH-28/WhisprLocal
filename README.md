@@ -32,7 +32,7 @@ This builds the `.app` bundle at `build/WhisprLocal.app`.
 
 ### 2. Download a model
 
-Download a GGML Whisper model from [Hugging Face](https://huggingface.co/ggerganov/whisper.cpp/tree/main) and place it in the models folder:
+The app can download models for you — just click **Download** in the Setup tab or Settings > Model. Or download manually:
 
 ```bash
 mkdir -p ~/Library/Application\ Support/WhisprLocal/models
