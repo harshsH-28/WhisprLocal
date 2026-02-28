@@ -31,6 +31,12 @@ public final class AppState {
     /// Selected language for transcription. "auto" = whisper auto-detect.
     public var selectedLanguage: String = "auto"
 
+    /// Model download progress (nil = not downloading, 0.0–1.0 = in progress).
+    public var downloadProgress: Double?
+
+    /// Whether a model download is currently in progress.
+    public var isDownloading: Bool { downloadProgress != nil }
+
     /// Whether initial setup is complete (all permissions granted and model available).
     public var isSetupComplete: Bool {
         hasMicrophonePermission && hasAccessibilityPermission && isModelAvailable

@@ -148,6 +148,29 @@ private struct GeneralSettingsTab: View {
 private struct ModelSettingsTab: View {
     let controller: DictationController
 
+    private func startDownload(modelManager: ModelManager) {
+        let modelType = controller.appState.selectedModelType
+        controller.appState.downloadProgress = 0
+        Task {
+            do {
+                try await modelManager.downloadModel(modelType) { fraction in
+                    Task { @MainActor in
+                        controller.appState.downloadProgress = fraction
+                    }
+                }
+                await MainActor.run {
+                    controller.appState.downloadProgress = nil
+                    controller.refreshStatus()
+                }
+            } catch {
+                await MainActor.run {
+                    controller.appState.downloadProgress = nil
+                    controller.appState.lastError = error.localizedDescription
+                }
+            }
+        }
+    }
+
     var body: some View {
         Form {
             Section("Selected Model") {
@@ -189,9 +212,30 @@ private struct ModelSettingsTab: View {
                 }
 
                 if !controller.appState.isModelAvailable {
-                    Text(modelManager.modelInstructions(for: controller.appState.selectedModelType))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if controller.appState.isDownloading {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ProgressView(value: controller.appState.downloadProgress ?? 0)
+                            HStack {
+                                Text("\(Int((controller.appState.downloadProgress ?? 0) * 100))%")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Button("Cancel") {
+                                    modelManager.cancelDownload()
+                                    controller.appState.downloadProgress = nil
+                                }
+                                .font(.caption)
+                            }
+                        }
+                    } else {
+                        Button("Download \(controller.appState.selectedModelType.displayName) (\(controller.appState.selectedModelType.sizeDescription))") {
+                            startDownload(modelManager: modelManager)
+                        }
+
+                        Text(modelManager.modelInstructions(for: controller.appState.selectedModelType))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Button("Refresh") {

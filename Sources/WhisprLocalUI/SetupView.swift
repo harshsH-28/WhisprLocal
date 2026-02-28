@@ -9,6 +9,29 @@ public struct SetupView: View {
         self.controller = controller
     }
 
+    private func startDownload(modelManager: ModelManager) {
+        let modelType = controller.appState.selectedModelType
+        controller.appState.downloadProgress = 0
+        Task {
+            do {
+                try await modelManager.downloadModel(modelType) { fraction in
+                    Task { @MainActor in
+                        controller.appState.downloadProgress = fraction
+                    }
+                }
+                await MainActor.run {
+                    controller.appState.downloadProgress = nil
+                    controller.refreshStatus()
+                }
+            } catch {
+                await MainActor.run {
+                    controller.appState.downloadProgress = nil
+                    controller.appState.lastError = error.localizedDescription
+                }
+            }
+        }
+    }
+
     public var body: some View {
         Form {
             Section("Permissions") {
@@ -107,9 +130,32 @@ public struct SetupView: View {
 
                 if !controller.appState.isModelAvailable {
                     let modelManager = ModelManager()
+
+                    if controller.appState.isDownloading {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ProgressView(value: controller.appState.downloadProgress ?? 0)
+                            HStack {
+                                Text("Downloading... \(Int((controller.appState.downloadProgress ?? 0) * 100))%")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Button("Cancel") {
+                                    modelManager.cancelDownload()
+                                    controller.appState.downloadProgress = nil
+                                }
+                                .font(.caption)
+                            }
+                        }
+                    } else {
+                        Button("Download \(controller.appState.selectedModelType.displayName) (\(controller.appState.selectedModelType.sizeDescription))") {
+                            startDownload(modelManager: modelManager)
+                        }
+                    }
+
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Download the model from Hugging Face and place it at:")
+                        Text("Or place the model file manually at:")
                             .font(.caption)
+                            .foregroundStyle(.secondary)
                         Text(modelManager.modelPath(for: controller.appState.selectedModelType).path)
                             .font(.caption)
                             .textSelection(.enabled)
