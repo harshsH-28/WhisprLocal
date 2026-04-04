@@ -20,7 +20,7 @@ public enum AudioRecorderError: Error, LocalizedError {
 
 /// Records audio from the default input device at 16kHz mono Float32 format.
 public final class AudioRecorder {
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     private var samples: [Float] = []
     private let sampleRate: Double = 16000.0
     private let lock = NSLock()
@@ -125,6 +125,20 @@ public final class AudioRecorder {
         lock.lock()
         samples.removeAll()
         lock.unlock()
+    }
+
+    /// Reset the audio engine after sleep/wake or error recovery.
+    /// Creates a fresh AVAudioEngine instance to recover from zombie state.
+    public func resetEngine() {
+        if isRecording {
+            engine.stop()
+            engine.inputNode.removeTap(onBus: 0)
+            isRecording = false
+        }
+        lock.lock()
+        samples.removeAll()
+        lock.unlock()
+        engine = AVAudioEngine()
     }
 
     /// Current duration of recorded audio in seconds.
