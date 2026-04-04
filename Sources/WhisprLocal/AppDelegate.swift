@@ -7,22 +7,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var permissionTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Refresh permissions and model status
-        controller.refreshStatus()
+        // Single-instance check: if already running, activate existing and quit
+        let bundleID = Bundle.main.bundleIdentifier ?? "com.whisprlocal.app"
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        if running.count > 1 {
+            for app in running where app != NSRunningApplication.current {
+                app.activate()
+            }
+            NSApp.terminate(nil)
+            return
+        }
 
-        // Register the global hotkey
+        controller.refreshStatus()
         controller.setup()
 
-        // Prompt for accessibility permission if not already granted
+        // Clean up orphaned temp files from failed downloads
+        controller.modelManager.cleanupOrphanedFiles()
+
         let permissionManager = PermissionManager()
         if !permissionManager.checkAccessibilityPermission() {
             permissionManager.requestAccessibilityPermission()
         }
 
-        // Continuously poll permissions so the UI stays current
         startPermissionPolling()
+        registerSleepWakeNotifications()
 
-        // Pre-load model in background if available
         if controller.appState.isModelAvailable {
             Task {
                 try? await controller.ensureModelLoaded()
@@ -30,7 +39,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Polls permissions every 2 seconds so the UI stays in sync with System Settings.
     private func startPermissionPolling() {
         permissionTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] timer in
             guard let self else { timer.invalidate(); return }
@@ -38,8 +46,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - Sleep/Wake
+
+    private func registerSleepWakeNotifications() {
+        let center = NSWorkspace.shared.notificationCenter
+        center.addObserver(self, selector: #selector(handleSleep),
+                           name: NSWorkspace.screensDidSleepNotification, object: nil)
+        center.addObserver(self, selector: #selector(handleWake),
+                           name: NSWorkspace.screensDidWakeNotification, object: nil)
+    }
+
+    @objc private func handleSleep() {
+        if controller.appState.recordingState.isRecording {
+            controller.stopRecording()
+            controller.wasInterruptedBySleep = true
+        }
+    }
+
+    @objc private func handleWake() {
+        controller.resetAudioEngine()
+
+        if controller.wasInterruptedBySleep {
+            if !controller.appState.recordingState.isTranscribing {
+                controller.appState.transition(to: .error(
+                    "Recording was interrupted because the system went to sleep. Partial transcription was saved."
+                ))
+            }
+            controller.wasInterruptedBySleep = false
+        }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         permissionTimer?.invalidate()
         controller.cancelRecording()
+        controller.modelManager.cancelDownload()
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 }
