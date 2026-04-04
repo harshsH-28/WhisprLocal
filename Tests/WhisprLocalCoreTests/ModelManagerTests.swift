@@ -30,7 +30,7 @@ final class ModelManagerTests: XCTestCase {
         for model in WhisperModelType.allCases {
             let path = manager.modelPath(for: model)
             XCTAssertEqual(path.lastPathComponent, model.fileName)
-            XCTAssertEqual(path.deletingLastPathComponent(), dir)
+            XCTAssertEqual(path.deletingLastPathComponent().standardized, dir.standardized)
         }
     }
 
