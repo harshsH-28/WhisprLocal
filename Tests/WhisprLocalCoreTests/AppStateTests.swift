@@ -84,4 +84,12 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(result)
         XCTAssertEqual(state.recordingState, .idle)
     }
+
+    func testIdleToErrorTransition() {
+        let state = AppState()
+        let result = state.transition(to: .error("test error from idle"))
+        XCTAssertTrue(result)
+        XCTAssertTrue(state.recordingState.isError)
+        XCTAssertEqual(state.lastError, "test error from idle")
+    }
 }

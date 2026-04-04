@@ -33,6 +33,8 @@ public enum RecordingState: Equatable, Sendable {
             return true
         case (.error, .idle):             // reset after error
             return true
+        case (.idle, .error):             // error from idle (e.g., sleep interruption, failed start)
+            return true
         default:
             return false
         }
