@@ -6,8 +6,11 @@ public final class DictationController {
     private let audioRecorder: AudioRecorder
     private let transcriber: WhisperTranscriber
     private let textInjector: TextInjector
-    private let modelManager: ModelManager
+    public let modelManager: ModelManager
     private let hotkeyManager: HotkeyManager
+
+    /// Set by AppDelegate on sleep if recording was active.
+    public var wasInterruptedBySleep: Bool = false
 
     public let appState: AppState
 
@@ -41,17 +44,20 @@ public final class DictationController {
             startRecording()
         case .recording:
             stopRecording()
+        case .error:
+            appState.clearError()
         default:
-            break // Ignore toggle during transcription or error
+            break
         }
     }
 
     /// Begin recording audio.
     public func startRecording() {
-        guard appState.transition(to: .recording) else { return }
+        guard appState.recordingState.isIdle else { return }
 
         do {
             try audioRecorder.startRecording()
+            appState.transition(to: .recording)
         } catch {
             appState.transition(to: .error("Failed to start recording: \(error.localizedDescription)"))
         }
@@ -60,6 +66,11 @@ public final class DictationController {
     /// Stop recording and begin transcription pipeline.
     public func stopRecording() {
         guard appState.recordingState.isRecording else { return }
+
+        guard audioRecorder.isRecording else {
+            appState.transition(to: .idle)
+            return
+        }
 
         do {
             let samples = try audioRecorder.stopRecording()
@@ -77,6 +88,11 @@ public final class DictationController {
     public func cancelRecording() {
         audioRecorder.cancelRecording()
         appState.transition(to: .idle)
+    }
+
+    /// Reset the audio engine (called after sleep/wake).
+    public func resetAudioEngine() {
+        audioRecorder.resetEngine()
     }
 
     /// Load the selected model if not already loaded.
@@ -110,10 +126,8 @@ public final class DictationController {
 
     private func transcribeAndInject(samples: [Float]) async {
         do {
-            // Ensure model is loaded
             try await ensureModelLoaded()
 
-            // Transcribe
             let language = await MainActor.run { self.appState.selectedLanguage }
             let text = try await transcriber.transcribe(samples: samples, language: language)
 
@@ -121,10 +135,8 @@ public final class DictationController {
                 self.appState.lastTranscription = text
             }
 
-            // Refresh permissions before injection so AXIsProcessTrusted() is current
             await MainActor.run { self.refreshStatus() }
 
-            // Inject text into focused app
             if !text.isEmpty {
                 try await textInjector.inject(text: text)
             }
