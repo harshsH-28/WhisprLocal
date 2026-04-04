@@ -3,194 +3,140 @@ import WhisprLocalCore
 
 public struct SetupView: View {
     let controller: DictationController
+    @Binding var selectedTab: Int
     private let permissionManager = PermissionManager()
 
-    public init(controller: DictationController) {
+    public init(controller: DictationController, selectedTab: Binding<Int>) {
         self.controller = controller
+        self._selectedTab = selectedTab
     }
 
-    private func startDownload(modelManager: ModelManager) {
-        let modelType = controller.appState.selectedModelType
-        controller.appState.downloadProgress = 0
-        Task {
-            do {
-                try await modelManager.downloadModel(modelType) { fraction in
-                    Task { @MainActor in
-                        controller.appState.downloadProgress = fraction
-                    }
-                }
-                await MainActor.run {
-                    controller.appState.downloadProgress = nil
-                    controller.refreshStatus()
-                }
-            } catch {
-                await MainActor.run {
-                    controller.appState.downloadProgress = nil
-                    controller.appState.lastError = error.localizedDescription
-                }
-            }
-        }
+    private var anyModelInstalled: Bool {
+        !controller.modelManager.installedModels().isEmpty
+    }
+
+    private var allComplete: Bool {
+        controller.appState.hasMicrophonePermission
+            && controller.appState.hasAccessibilityPermission
+            && anyModelInstalled
     }
 
     public var body: some View {
-        Form {
-            Section("Permissions") {
-                // Microphone
-                HStack {
-                    Image(systemName: controller.appState.hasMicrophonePermission
-                          ? "checkmark.circle.fill" : "mic.slash")
-                        .foregroundStyle(controller.appState.hasMicrophonePermission ? .green : .orange)
-                        .frame(width: 24)
-
-                    VStack(alignment: .leading) {
-                        Text("Microphone Access")
-                            .font(.body)
-                        Text("Required to record your voice for transcription")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    if !controller.appState.hasMicrophonePermission {
-                        Button("Grant") {
+        ScrollView {
+            VStack(spacing: 16) {
+                VStack(spacing: 0) {
+                    // Microphone
+                    SetupRow(
+                        icon: "🎙",
+                        title: "Microphone",
+                        subtitle: controller.appState.hasMicrophonePermission
+                            ? nil : "Required to capture audio",
+                        isGranted: controller.appState.hasMicrophonePermission,
+                        action: {
                             Task {
                                 let granted = await permissionManager.requestMicrophonePermission()
                                 await MainActor.run {
                                     controller.appState.hasMicrophonePermission = granted
                                 }
                             }
-                        }
-                    } else {
-                        Text("Granted")
-                            .foregroundStyle(.green)
-                            .font(.caption)
-                    }
-                }
+                        },
+                        actionLabel: "Grant"
+                    )
 
-                // Accessibility
-                HStack {
-                    Image(systemName: controller.appState.hasAccessibilityPermission
-                          ? "checkmark.circle.fill" : "lock.shield")
-                        .foregroundStyle(controller.appState.hasAccessibilityPermission ? .green : .orange)
-                        .frame(width: 24)
+                    Divider().padding(.leading, 56)
 
-                    VStack(alignment: .leading) {
-                        Text("Accessibility Access")
-                            .font(.body)
-                        Text("Required to paste text into other applications")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    if !controller.appState.hasAccessibilityPermission {
-                        Button("Open Settings") {
+                    // Accessibility
+                    SetupRow(
+                        icon: "⌨️",
+                        title: "Accessibility",
+                        subtitle: controller.appState.hasAccessibilityPermission
+                            ? nil : "Required to paste transcribed text",
+                        isGranted: controller.appState.hasAccessibilityPermission,
+                        action: {
                             permissionManager.requestAccessibilityPermission()
-                        }
-                    } else {
-                        Text("Granted")
-                            .foregroundStyle(.green)
-                            .font(.caption)
-                    }
-                }
+                        },
+                        actionLabel: "Open Settings"
+                    )
 
-                if !controller.appState.hasAccessibilityPermission {
-                    Text("If you rebuilt the app, toggle WhisprLocal OFF then ON in System Settings > Privacy & Security > Accessibility.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 32)
+                    Divider().padding(.leading, 56)
+
+                    // Model
+                    SetupRow(
+                        icon: "🧠",
+                        title: "Whisper Model",
+                        subtitle: anyModelInstalled
+                            ? nil : "Download a model to start transcribing",
+                        isGranted: anyModelInstalled,
+                        action: { selectedTab = 1 },
+                        actionLabel: "Go to Models"
+                    )
+                }
+                .background(.regularMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal)
+
+                if allComplete {
+                    HStack {
+                        Spacer()
+                        Text("All set — press ⌥D anywhere to start dictating")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.green)
+                        Spacer()
+                    }
+                    .padding(12)
+                    .background(.green.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(.horizontal)
                 }
             }
+            .padding(.vertical)
+        }
+    }
+}
 
-            Section("Whisper Model") {
-                HStack {
-                    Image(systemName: controller.appState.isModelAvailable
-                          ? "checkmark.circle.fill" : "arrow.down.circle")
-                        .foregroundStyle(controller.appState.isModelAvailable ? .green : .orange)
-                        .frame(width: 24)
+// MARK: - Setup Row
 
-                    VStack(alignment: .leading) {
-                        Text("Model: \(controller.appState.selectedModelType.displayName)")
-                            .font(.body)
-                        Text("Place \(controller.appState.selectedModelType.fileName) in the models folder")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+private struct SetupRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String?
+    let isGranted: Bool
+    let action: (() -> Void)?
+    let actionLabel: String
 
-                    Spacer()
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(icon)
+                .font(.title3)
+                .frame(width: 28, height: 28)
+                .background(isGranted ? Color.green.opacity(0.1) : Color(nsColor: .quaternarySystemFill))
+                .clipShape(RoundedRectangle(cornerRadius: 7))
 
-                    if controller.appState.isModelAvailable {
-                        Text("Ready")
-                            .foregroundStyle(.green)
-                            .font(.caption)
-                    }
-                }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
 
-                if !controller.appState.isModelAvailable {
-                    let modelManager = ModelManager()
-
-                    if controller.appState.isDownloading {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ProgressView(value: controller.appState.downloadProgress ?? 0)
-                            HStack {
-                                Text("Downloading... \(Int((controller.appState.downloadProgress ?? 0) * 100))%")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Button("Cancel") {
-                                    modelManager.cancelDownload()
-                                    controller.appState.downloadProgress = nil
-                                }
-                                .font(.caption)
-                            }
-                        }
-                    } else {
-                        Button("Download \(controller.appState.selectedModelType.displayName) (\(controller.appState.selectedModelType.sizeDescription))") {
-                            startDownload(modelManager: modelManager)
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Or place the model file manually at:")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(modelManager.modelPath(for: controller.appState.selectedModelType).path)
-                            .font(.caption)
-                            .textSelection(.enabled)
-                            .foregroundStyle(.blue)
-
-                        Button("Open Models Folder") {
-                            try? modelManager.ensureModelsDirectory()
-                            NSWorkspace.shared.open(modelManager.modelsDirectory)
-                        }
+                if let subtitle {
+                    Text(subtitle)
                         .font(.caption)
-                    }
+                        .foregroundStyle(.secondary)
                 }
             }
 
-            Section {
-                Button("Refresh Status") {
-                    controller.refreshStatus()
-                }
+            Spacer()
 
-                if controller.appState.isSetupComplete {
-                    Label("Setup Complete — WhisprLocal is ready!", systemImage: "checkmark.seal.fill")
-                        .foregroundStyle(.green)
-                }
+            if isGranted {
+                Image(systemName: "checkmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.green)
+            } else if let action {
+                Button(actionLabel, action: action)
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
             }
         }
-        .formStyle(.grouped)
-        .padding()
-        .onAppear {
-            controller.refreshStatus()
-        }
-        .task {
-            while !Task.isCancelled {
-                controller.refreshStatus()
-                try? await Task.sleep(for: .seconds(2))
-            }
-        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
     }
 }
