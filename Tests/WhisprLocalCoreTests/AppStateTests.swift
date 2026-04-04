@@ -92,4 +92,23 @@ final class AppStateTests: XCTestCase {
         XCTAssertTrue(state.recordingState.isError)
         XCTAssertEqual(state.lastError, "test error from idle")
     }
+
+    func testDownloadStateInitialValues() {
+        let state = AppState()
+        XCTAssertNil(state.downloadingModelType)
+        XCTAssertNil(state.downloadProgress)
+        XCTAssertNil(state.downloadError)
+        XCTAssertFalse(state.isDownloading)
+    }
+
+    func testIsDownloadingDerivedFromDownloadingModelType() {
+        let state = AppState()
+        state.downloadingModelType = .base
+        state.downloadProgress = 0.5
+        XCTAssertTrue(state.isDownloading)
+
+        state.downloadingModelType = nil
+        state.downloadProgress = nil
+        XCTAssertFalse(state.isDownloading)
+    }
 }
