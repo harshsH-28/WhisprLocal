@@ -8,6 +8,7 @@ public enum ModelManagerError: Error, LocalizedError {
     case downloadFailed(Error)
     case downloadCancelled
     case invalidDownload
+    case downloadInProgress
 
     public var errorDescription: String? {
         switch self {
@@ -23,6 +24,8 @@ public enum ModelManagerError: Error, LocalizedError {
             return "Model download was cancelled"
         case .invalidDownload:
             return "Downloaded file is invalid or corrupted"
+        case .downloadInProgress:
+            return "A download is already in progress"
         }
     }
 }
@@ -127,6 +130,7 @@ public final class ModelManager: NSObject, URLSessionDownloadDelegate, @unchecke
     ///   - modelType: The model to download.
     ///   - progress: Callback reporting download progress (0.0–1.0), called on arbitrary thread.
     public func downloadModel(_ modelType: WhisperModelType, progress: @escaping @Sendable (Double) -> Void) async throws {
+        guard downloadTask == nil else { throw ModelManagerError.downloadInProgress }
         try ensureModelsDirectory()
 
         let url = downloadURL(for: modelType)
@@ -164,6 +168,21 @@ public final class ModelManager: NSObject, URLSessionDownloadDelegate, @unchecke
         downloadTask?.cancel()
         downloadTask = nil
         progressCallback = nil
+    }
+
+    /// Clean up orphaned temp files from failed/cancelled downloads.
+    public func cleanupOrphanedFiles() {
+        let tempDir = fileManager.temporaryDirectory
+        guard let contents = try? fileManager.contentsOfDirectory(
+            at: tempDir, includingPropertiesForKeys: nil
+        ) else { return }
+
+        for file in contents where file.pathExtension == "bin" {
+            let name = file.deletingPathExtension().lastPathComponent
+            if UUID(uuidString: name) != nil {
+                try? fileManager.removeItem(at: file)
+            }
+        }
     }
 
     // MARK: - URLSessionDownloadDelegate
