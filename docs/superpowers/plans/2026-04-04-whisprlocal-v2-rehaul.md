@@ -89,7 +89,62 @@ git commit -m "feat: add app icon from user-provided retro CRT pixel art design"
 
 ---
 
-## Task 2: AppState — Add Download State Properties for Multi-Model Management
+## Task 2: RecordingState — Add idle → error Transition
+
+**Files:**
+- Modify: `Sources/WhisprLocalCore/Models/RecordingState.swift`
+- Modify: `Tests/WhisprLocalCoreTests/AppStateTests.swift`
+
+- [ ] **Step 1: Write failing test for idle → error transition**
+
+Add to `Tests/WhisprLocalCoreTests/AppStateTests.swift`:
+
+```swift
+func testIdleToErrorTransition() {
+    let state = AppState()
+    // idle → error must be valid (e.g., sleep interruption message, startRecording failure)
+    let result = state.transition(to: .error("test error from idle"))
+    XCTAssertTrue(result)
+    XCTAssertTrue(state.recordingState.isError)
+    XCTAssertEqual(state.lastError, "test error from idle")
+}
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+```bash
+xcode-select -s /Applications/Xcode.app/Contents/Developer && swift test --filter WhisprLocalCoreTests.AppStateTests/testIdleToErrorTransition
+```
+
+Expected: FAIL — idle → error transition returns false.
+
+- [ ] **Step 3: Add idle → error transition to RecordingState**
+
+In `Sources/WhisprLocalCore/Models/RecordingState.swift`, add after line 34 (`case (.error, .idle):`):
+
+```swift
+        case (.idle, .error):             // error from idle (e.g., sleep interruption, failed start)
+            return true
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+```bash
+swift test --filter WhisprLocalCoreTests.AppStateTests/testIdleToErrorTransition
+```
+
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add Sources/WhisprLocalCore/Models/RecordingState.swift Tests/WhisprLocalCoreTests/AppStateTests.swift
+git commit -m "fix: allow idle → error state transition for sleep interruption and start failures"
+```
+
+---
+
+## Task 3: AppState — Add Download State Properties for Multi-Model Management
 
 **Files:**
 - Modify: `Sources/WhisprLocalCore/Models/AppState.swift`
@@ -231,7 +286,7 @@ git commit -m "feat: add download state properties to AppState for multi-model m
 
 ---
 
-## Task 3: AudioRecorder — Add resetEngine() Method
+## Task 4: AudioRecorder — Add resetEngine() Method
 
 **Files:**
 - Modify: `Sources/WhisprLocalCore/Services/AudioRecorder.swift`
@@ -279,7 +334,7 @@ git commit -m "feat: add resetEngine() to AudioRecorder for sleep/wake recovery"
 
 ---
 
-## Task 4: DictationController — Fix State Ordering and Add Sleep/Wake Support
+## Task 5: DictationController — Fix State Ordering and Add Sleep/Wake Support
 
 **Files:**
 - Modify: `Sources/WhisprLocalCore/DictationController.swift`
@@ -297,7 +352,7 @@ public final class DictationController {
     private let audioRecorder: AudioRecorder
     private let transcriber: WhisperTranscriber
     private let textInjector: TextInjector
-    private let modelManager: ModelManager
+    public let modelManager: ModelManager
     private let hotkeyManager: HotkeyManager
 
     /// Set by AppDelegate on sleep if recording was active.
@@ -448,7 +503,8 @@ public final class DictationController {
 ```
 
 Key changes from original:
-- `startRecording()`: transitions to `.recording` AFTER `audioRecorder.startRecording()` succeeds (not before)
+- `modelManager` is now `public let` — views must use `controller.modelManager` instead of creating new instances (fixes cancel/delete operating on wrong instance)
+- `startRecording()`: transitions to `.recording` AFTER `audioRecorder.startRecording()` succeeds (not before). Requires Task 2's idle → error transition for the catch block to work.
 - `stopRecording()`: checks `audioRecorder.isRecording` for sync verification
 - `toggleDictation()`: error state clears on hotkey press (QOL)
 - Added `wasInterruptedBySleep` property
@@ -471,7 +527,7 @@ git commit -m "fix: state ordering in DictationController and add sleep/wake sup
 
 ---
 
-## Task 5: AppDelegate — Sleep/Wake Handlers and Single-Instance Check
+## Task 6: AppDelegate — Sleep/Wake Handlers and Single-Instance Check
 
 **Files:**
 - Modify: `Sources/WhisprLocal/AppDelegate.swift`
@@ -506,7 +562,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.setup()
 
         // Clean up orphaned temp files from failed downloads
-        ModelManager().cleanupOrphanedFiles()
+        controller.modelManager.cleanupOrphanedFiles()
 
         let permissionManager = PermissionManager()
         if !permissionManager.checkAccessibilityPermission() {
@@ -553,9 +609,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.resetAudioEngine()
 
         if controller.wasInterruptedBySleep {
-            controller.appState.transition(to: .error(
-                "Recording was interrupted because the system went to sleep. Partial transcription was saved."
-            ))
+            // Only show interruption message if transcription has already completed.
+            // If still transcribing, let it finish — the message would conflict with the
+            // transcribing → idle transition.
+            if !controller.appState.recordingState.isTranscribing {
+                controller.appState.transition(to: .error(
+                    "Recording was interrupted because the system went to sleep. Partial transcription was saved."
+                ))
+            }
             controller.wasInterruptedBySleep = false
         }
     }
@@ -585,7 +646,7 @@ git commit -m "feat: add sleep/wake handlers and single-instance check to AppDel
 
 ---
 
-## Task 6: ModelManager — Concurrent Prevention, Cancel Cleanup, Orphan Cleanup
+## Task 7: ModelManager — Concurrent Prevention, Cancel Cleanup, Orphan Cleanup
 
 **Files:**
 - Modify: `Sources/WhisprLocalCore/Services/ModelManager.swift`
@@ -655,7 +716,7 @@ git commit -m "feat: add download guard, orphan cleanup, and improved error type
 
 ---
 
-## Task 7: MenuBarView — Full Redesign
+## Task 8: MenuBarView — Full Redesign
 
 **Files:**
 - Modify: `Sources/WhisprLocalUI/MenuBarView.swift`
@@ -940,7 +1001,7 @@ git commit -m "feat: redesign MenuBarView with scrollable transcription, copy bu
 
 ---
 
-## Task 8: SettingsView — Full Redesign with Multi-Model Management
+## Task 9: SettingsView — Full Redesign with Multi-Model Management
 
 **Files:**
 - Modify: `Sources/WhisprLocalUI/SettingsView.swift`
@@ -976,7 +1037,7 @@ public struct SettingsView: View {
                 }
                 .tag(1)
 
-            SetupView(controller: controller)
+            SetupView(controller: controller, selectedTab: $selectedTab)
                 .tabItem {
                     Label("Setup", systemImage: "checkmark.circle")
                 }
@@ -1094,7 +1155,10 @@ private struct ModelSettingsTab: View {
     @State private var showDeleteConfirmation = false
     @State private var modelToDelete: WhisperModelType?
 
-    private var modelManager: ModelManager { ModelManager() }
+    /// Use the controller's shared ModelManager — never create new instances.
+    /// Creating separate instances breaks cancel/delete because download state
+    /// (downloadTask, continuation) lives on the instance that started the download.
+    private var modelManager: ModelManager { controller.modelManager }
 
     var body: some View {
         ScrollView {
@@ -1179,7 +1243,7 @@ private struct ModelSettingsTab: View {
         controller.appState.downloadProgress = 0
         controller.appState.downloadError = nil
 
-        let mgr = ModelManager()
+        let mgr = controller.modelManager
         Task {
             do {
                 try await mgr.downloadModel(model) { fraction in
@@ -1208,7 +1272,7 @@ private struct ModelSettingsTab: View {
     }
 
     private func cancelDownload() {
-        ModelManager().cancelDownload()
+        controller.modelManager.cancelDownload()
         controller.appState.downloadingModelType = nil
         controller.appState.downloadProgress = nil
         controller.appState.downloadError = nil
@@ -1216,7 +1280,7 @@ private struct ModelSettingsTab: View {
 
     private func deleteModel(_ model: WhisperModelType) {
         do {
-            try ModelManager().deleteModel(model)
+            try controller.modelManager.deleteModel(model)
             controller.refreshStatus()
         } catch {
             controller.appState.lastError = error.localizedDescription
@@ -1274,7 +1338,9 @@ private struct ModelRow: View {
 
                 Spacer()
 
-                // Actions
+                // Actions — ORDER MATTERS: error (Retry) must be checked before
+                // downloading (Cancel), because downloadingModelType stays non-nil
+                // on error so isDownloading is still true.
                 if isActive {
                     Text("Active")
                         .font(.caption)
@@ -1288,10 +1354,10 @@ private struct ModelRow: View {
                         .padding(.vertical, 4)
                         .background(.quaternary)
                         .clipShape(RoundedRectangle(cornerRadius: 5))
-                } else if showDownloadButton {
-                    Button("Download", action: onDownload)
+                } else if showRetryButton {
+                    // Error state — show Retry (checked BEFORE isDownloading)
+                    Button("Retry", action: onRetry)
                         .font(.caption)
-                        .disabled(anyDownloadActive)
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                 } else if isDownloading {
@@ -1310,9 +1376,10 @@ private struct ModelRow: View {
                             .background(.quaternary)
                             .clipShape(RoundedRectangle(cornerRadius: 5))
                     }
-                } else if showRetryButton {
-                    Button("Retry", action: onRetry)
+                } else if showDownloadButton {
+                    Button("Download", action: onDownload)
                         .font(.caption)
+                        .disabled(anyDownloadActive)
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                 }
@@ -1389,7 +1456,7 @@ git commit -m "feat: redesign SettingsView with multi-model list, download progr
 
 ---
 
-## Task 9: SetupView — Redesign and Remove Duplicate Polling
+## Task 10: SetupView — Redesign and Remove Duplicate Polling
 
 **Files:**
 - Modify: `Sources/WhisprLocalUI/SetupView.swift`
@@ -1404,16 +1471,18 @@ import WhisprLocalCore
 
 public struct SetupView: View {
     let controller: DictationController
+    @Binding var selectedTab: Int
     private let permissionManager = PermissionManager()
-    private let modelManager = ModelManager()
 
-    public init(controller: DictationController) {
+    public init(controller: DictationController, selectedTab: Binding<Int>) {
         self.controller = controller
+        self._selectedTab = selectedTab
     }
 
     /// Setup checks if ANY model is installed, not just the selected one.
+    /// Uses controller.modelManager — never create new instances.
     private var anyModelInstalled: Bool {
-        !ModelManager().installedModels().isEmpty
+        !controller.modelManager.installedModels().isEmpty
     }
 
     private var allComplete: Bool {
@@ -1469,7 +1538,7 @@ public struct SetupView: View {
                         subtitle: anyModelInstalled
                             ? nil : "Download a model to start transcribing",
                         isGranted: anyModelInstalled,
-                        action: nil,
+                        action: { selectedTab = 1 },
                         actionLabel: "Go to Models"
                     )
                 }
@@ -1568,7 +1637,7 @@ git commit -m "feat: redesign SetupView, remove duplicate polling, check any mod
 
 ---
 
-## Task 10: CI/CD — GitHub Actions Workflows
+## Task 11: CI/CD — GitHub Actions Workflows
 
 **Files:**
 - Create: `.github/workflows/build.yml`
@@ -1671,7 +1740,7 @@ git commit -m "feat: add GitHub Actions for CI build/test and tag-based DMG rele
 
 ---
 
-## Task 11: Final Build Verification
+## Task 12: Final Build Verification
 
 **Files:** None (verification only)
 
@@ -1723,13 +1792,25 @@ git status
 | Task | Area | Description |
 |------|------|-------------|
 | 1 | Icon | Convert PNG → .icns, wire into Info.plist and build script |
-| 2 | Core | Add download state properties to AppState |
-| 3 | Core | Add `resetEngine()` to AudioRecorder |
-| 4 | Core | Fix DictationController state ordering, add sleep support |
-| 5 | App | Sleep/wake handlers and single-instance check in AppDelegate |
-| 6 | Core | ModelManager robustness — concurrent guard, orphan cleanup |
-| 7 | UI | Redesign MenuBarView — scroll, copy, errors |
-| 8 | UI | Redesign SettingsView — multi-model list with all 5 states |
-| 9 | UI | Redesign SetupView — clean rows, remove double polling |
-| 10 | CI/CD | GitHub Actions for build/test and tagged releases |
-| 11 | Verify | Full build, test, and bundle verification |
+| 2 | Core | Add idle → error transition to RecordingState (needed by Tasks 5, 6) |
+| 3 | Core | Add download state properties to AppState |
+| 4 | Core | Add `resetEngine()` to AudioRecorder |
+| 5 | Core | Fix DictationController state ordering, make modelManager public, add sleep support |
+| 6 | App | Sleep/wake handlers (with timing guard) and single-instance check in AppDelegate |
+| 7 | Core | ModelManager robustness — concurrent guard, orphan cleanup |
+| 8 | UI | Redesign MenuBarView — scroll, copy, errors |
+| 9 | UI | Redesign SettingsView — multi-model list, uses controller.modelManager, condition ordering fixed |
+| 10 | UI | Redesign SetupView — tab binding for "Go to Models", uses controller.modelManager |
+| 11 | CI/CD | GitHub Actions for build/test and tagged releases |
+| 12 | Verify | Full build, test, and bundle verification |
+
+## Review Fixes Applied
+
+| # | Issue | Fix |
+|---|-------|-----|
+| 1 | ModelManager singleton — views creating new instances, cancel broken | Made `modelManager` public on DictationController. All views use `controller.modelManager`. |
+| 2 | Missing idle → error transition | Added to RecordingState as new Task 2. |
+| 3 | Download error shows Cancel instead of Retry | Reordered conditions: `showRetryButton` checked before `isDownloading`. |
+| 4 | SetupView "Go to Models" button dead | Added `@Binding var selectedTab: Int`, action sets it to 1. |
+| 5 | Sleep/wake timing — error during transcription | Added guard `!controller.appState.recordingState.isTranscribing` in handleWake. |
+| 6 | anyModelInstalled creates new ModelManager per render | Uses `controller.modelManager.installedModels()`. |
