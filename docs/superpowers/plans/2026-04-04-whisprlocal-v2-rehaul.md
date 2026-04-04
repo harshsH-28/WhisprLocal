@@ -624,6 +624,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         permissionTimer?.invalidate()
         controller.cancelRecording()
+        controller.modelManager.cancelDownload()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
     }
 }
@@ -664,6 +665,12 @@ And its description in `errorDescription`:
 ```swift
         case .downloadInProgress:
             return "A download is already in progress"
+```
+
+Add a concurrent download guard at the top of `downloadModel()` (line 130, before `try ensureModelsDirectory()`):
+
+```swift
+    guard downloadTask == nil else { throw ModelManagerError.downloadInProgress }
 ```
 
 Add the `cleanupOrphanedFiles()` method after `cancelDownload()` (after line 167):
