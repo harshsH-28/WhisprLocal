@@ -4,40 +4,74 @@ import WhisprLocalCore
 
 public struct MenuBarView: View {
     let controller: DictationController
+    @State private var showCopiedFeedback = false
 
     public init(controller: DictationController) {
         self.controller = controller
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Status header
-            StatusSection(state: controller.appState.recordingState)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                // Status header
+                StatusSection(
+                    state: controller.appState.recordingState,
+                    modelName: controller.appState.isModelLoaded
+                        ? controller.appState.selectedModelType.displayName : nil
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 12)
 
-            Divider()
+                // Error banner (shown when in error state)
+                if case .error(let message) = controller.appState.recordingState {
+                    ErrorBanner(message: message) {
+                        controller.appState.clearError()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                }
 
-            // Setup prompt if not ready
-            if !controller.appState.isSetupComplete {
-                SetupPromptSection(appState: controller.appState)
-                Divider()
+                // Setup prompt if not ready
+                if !controller.appState.isSetupComplete,
+                   !controller.appState.recordingState.isRecording,
+                   !controller.appState.recordingState.isTranscribing {
+                    Divider().padding(.horizontal, 16)
+                    SetupPromptSection(appState: controller.appState)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                }
+
+                // Last transcription
+                if !controller.appState.lastTranscription.isEmpty,
+                   !controller.appState.recordingState.isRecording,
+                   !controller.appState.recordingState.isTranscribing {
+                    Divider().padding(.horizontal, 16)
+                    LastTranscriptionSection(
+                        text: controller.appState.lastTranscription,
+                        showCopiedFeedback: $showCopiedFeedback
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+
+                // Shortcut hint (only when idle)
+                if controller.appState.recordingState.isIdle {
+                    Divider().padding(.horizontal, 16)
+                    ShortcutSection()
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                }
+
+                // Footer
+                Divider().padding(.horizontal, 16)
+                FooterSection()
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
             }
-
-            // Last transcription
-            if !controller.appState.lastTranscription.isEmpty {
-                LastTranscriptionSection(text: controller.appState.lastTranscription)
-                Divider()
-            }
-
-            // Controls
-            ControlsSection(controller: controller)
-
-            Divider()
-
-            // Footer
-            FooterSection()
         }
-        .padding(12)
-        .frame(width: 280)
+        .frame(width: 320)
+        .frame(maxHeight: 400)
     }
 }
 
@@ -45,52 +79,78 @@ public struct MenuBarView: View {
 
 private struct StatusSection: View {
     let state: RecordingState
+    let modelName: String?
 
     var body: some View {
         HStack(spacing: 8) {
-            statusIcon
-            VStack(alignment: .leading, spacing: 2) {
-                Text("WhisprLocal")
-                    .font(.headline)
-                Text(statusText)
+            Circle()
+                .fill(dotColor)
+                .frame(width: 8, height: 8)
+
+            Text(statusText)
+                .font(.system(size: 13, weight: .semibold))
+
+            Spacer()
+
+            if let modelName, state.isIdle {
+                Text("\(modelName) model loaded")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Spacer()
+
+            if state.isRecording {
+                Text("Press ⌥D to stop")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if state.isTranscribing {
+                Text("Just a moment")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
-    @ViewBuilder
-    private var statusIcon: some View {
+    private var dotColor: Color {
         switch state {
-        case .idle:
-            Image(systemName: "waveform")
-                .foregroundStyle(.green)
-                .font(.title2)
-        case .recording:
-            Image(systemName: "mic.fill")
-                .foregroundStyle(.red)
-                .font(.title2)
-                .symbolEffect(.pulse)
-        case .transcribing:
-            Image(systemName: "ellipsis.circle")
-                .foregroundStyle(.blue)
-                .font(.title2)
-                .symbolEffect(.pulse)
-        case .error:
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.yellow)
-                .font(.title2)
+        case .idle: return .green
+        case .recording: return .red
+        case .transcribing: return .blue
+        case .error: return .orange
         }
     }
 
     private var statusText: String {
         switch state {
-        case .idle: return "Ready — press hotkey to start"
-        case .recording: return "Recording... press hotkey to stop"
+        case .idle: return "Ready"
+        case .recording: return "Recording..."
         case .transcribing: return "Transcribing..."
-        case .error(let msg): return msg
+        case .error: return "Error"
         }
+    }
+}
+
+private struct ErrorBanner: View {
+    let message: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button("Dismiss", action: onDismiss)
+                .font(.caption)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.orange.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
 
@@ -125,46 +185,57 @@ private struct SetupPromptSection: View {
 
 private struct LastTranscriptionSection: View {
     let text: String
+    @Binding var showCopiedFeedback: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Last Transcription")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(text)
-                .font(.caption)
-                .lineLimit(3)
-                .textSelection(.enabled)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Last Transcription")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                    showCopiedFeedback = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        showCopiedFeedback = false
+                    }
+                } label: {
+                    Text(showCopiedFeedback ? "Copied!" : "Copy")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+            }
+
+            ScrollView {
+                Text(text)
+                    .font(.system(size: 12))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 120)
+            .padding(8)
+            .background(.quaternary.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
         }
     }
 }
 
-private struct ControlsSection: View {
-    let controller: DictationController
-
+private struct ShortcutSection: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Hotkey:")
-                    .font(.caption)
-                Spacer()
-                KeyboardShortcuts.Recorder(for: .toggleDictation)
-                    .controlSize(.small)
-            }
-
-            HStack {
-                Text("Model:")
-                    .font(.caption)
-                Spacer()
-                Text(controller.appState.selectedModelType.displayName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if controller.appState.isModelLoaded {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .font(.caption)
-                }
-            }
+        HStack {
+            Text("Shortcut")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text("⌥D")
+                .font(.caption)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(.quaternary)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
         }
     }
 }
@@ -179,6 +250,7 @@ private struct FooterSection: View {
             Button("Quit") {
                 NSApp.terminate(nil)
             }
+            .foregroundStyle(.secondary)
         }
         .font(.caption)
     }
