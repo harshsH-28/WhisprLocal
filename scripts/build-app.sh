@@ -59,6 +59,12 @@ install_name_tool -add_rpath "@executable_path/../Frameworks" "$MACOS_DIR/$APP_N
 # Copy Info.plist
 cp "$PROJECT_DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
 
+# Copy app icon
+if [ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]; then
+    cp "$PROJECT_DIR/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
+    echo "Copied app icon"
+fi
+
 # Create PkgInfo
 echo -n "APPL????" > "$CONTENTS_DIR/PkgInfo"
 
