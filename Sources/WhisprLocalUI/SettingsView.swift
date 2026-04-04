@@ -20,17 +20,17 @@ public struct SettingsView: View {
 
             ModelSettingsTab(controller: controller)
                 .tabItem {
-                    Label("Model", systemImage: "cpu")
+                    Label("Models", systemImage: "cpu")
                 }
                 .tag(1)
 
-            SetupView(controller: controller)
+            SetupView(controller: controller, selectedTab: $selectedTab)
                 .tabItem {
                     Label("Setup", systemImage: "checkmark.circle")
                 }
                 .tag(2)
         }
-        .frame(width: 450, height: 320)
+        .frame(width: 520, height: 440)
     }
 }
 
@@ -120,14 +120,6 @@ private struct GeneralSettingsTab: View {
                         .foregroundStyle(controller.appState.isModelLoaded ? .green : .red)
                 }
             }
-
-            if !controller.appState.lastTranscription.isEmpty {
-                Section("Last Transcription") {
-                    Text(controller.appState.lastTranscription)
-                        .textSelection(.enabled)
-                        .font(.body)
-                }
-            }
         }
         .formStyle(.grouped)
         .padding()
@@ -147,103 +139,274 @@ private struct GeneralSettingsTab: View {
 
 private struct ModelSettingsTab: View {
     let controller: DictationController
+    @State private var showDeleteConfirmation = false
+    @State private var modelToDelete: WhisperModelType?
 
-    private func startDownload(modelManager: ModelManager) {
-        let modelType = controller.appState.selectedModelType
+    private var modelManager: ModelManager { controller.modelManager }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                VStack(spacing: 0) {
+                    ForEach(WhisperModelType.allCases) { model in
+                        ModelRow(
+                            model: model,
+                            isActive: controller.appState.selectedModelType == model,
+                            isInstalled: modelManager.isModelAvailable(model),
+                            isDownloading: controller.appState.downloadingModelType == model
+                                && controller.appState.downloadError == nil,
+                            downloadProgress: controller.appState.downloadingModelType == model
+                                ? controller.appState.downloadProgress : nil,
+                            downloadError: controller.appState.downloadingModelType == model
+                                ? controller.appState.downloadError : nil,
+                            anyDownloadActive: controller.appState.isDownloading
+                                && controller.appState.downloadError == nil,
+                            onSelect: { selectModel(model) },
+                            onDownload: { startDownload(model) },
+                            onCancel: { cancelDownload() },
+                            onRetry: {
+                                controller.appState.downloadError = nil
+                                startDownload(model)
+                            },
+                            onDelete: {
+                                modelToDelete = model
+                                showDeleteConfirmation = true
+                            }
+                        )
+
+                        if model != WhisperModelType.allCases.last {
+                            Divider().padding(.leading, 46)
+                        }
+                    }
+                }
+                .background(.regularMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .padding()
+
+                Text("Click an installed model to use it for transcription.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
+            }
+        }
+        .alert("Delete \"\(modelToDelete?.displayName ?? "")\" model?",
+               isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                modelToDelete = nil
+            }
+            Button("Delete", role: .destructive) {
+                if let model = modelToDelete {
+                    deleteModel(model)
+                }
+                modelToDelete = nil
+            }
+        } message: {
+            if let model = modelToDelete {
+                Text("This will free up \(model.sizeDescription) of disk space. You can re-download it anytime.")
+            }
+        }
+    }
+
+    private func selectModel(_ model: WhisperModelType) {
+        guard modelManager.isModelAvailable(model) else { return }
+        controller.appState.selectedModelType = model
+        controller.appState.isModelLoaded = false
+        Task {
+            try? await controller.ensureModelLoaded()
+        }
+    }
+
+    private func startDownload(_ model: WhisperModelType) {
+        guard !controller.appState.isDownloading else { return }
+        controller.appState.downloadingModelType = model
         controller.appState.downloadProgress = 0
+        controller.appState.downloadError = nil
+
+        let mgr = controller.modelManager
         Task {
             do {
-                try await modelManager.downloadModel(modelType) { fraction in
+                try await mgr.downloadModel(model) { fraction in
                     Task { @MainActor in
                         controller.appState.downloadProgress = fraction
                     }
                 }
                 await MainActor.run {
+                    controller.appState.downloadingModelType = nil
                     controller.appState.downloadProgress = nil
                     controller.refreshStatus()
+                }
+            } catch is CancellationError {
+                await MainActor.run {
+                    controller.appState.downloadingModelType = nil
+                    controller.appState.downloadProgress = nil
+                    controller.appState.downloadError = nil
                 }
             } catch {
                 await MainActor.run {
                     controller.appState.downloadProgress = nil
-                    controller.appState.lastError = error.localizedDescription
+                    controller.appState.downloadError = error.localizedDescription
                 }
             }
         }
     }
 
+    private func cancelDownload() {
+        controller.modelManager.cancelDownload()
+        controller.appState.downloadingModelType = nil
+        controller.appState.downloadProgress = nil
+        controller.appState.downloadError = nil
+    }
+
+    private func deleteModel(_ model: WhisperModelType) {
+        do {
+            try controller.modelManager.deleteModel(model)
+            controller.refreshStatus()
+        } catch {
+            controller.appState.lastError = error.localizedDescription
+        }
+    }
+}
+
+// MARK: - Model Row
+
+private struct ModelRow: View {
+    let model: WhisperModelType
+    let isActive: Bool
+    let isInstalled: Bool
+    let isDownloading: Bool
+    let downloadProgress: Double?
+    let downloadError: String?
+    let anyDownloadActive: Bool
+    let onSelect: () -> Void
+    let onDownload: () -> Void
+    let onCancel: () -> Void
+    let onRetry: () -> Void
+    let onDelete: () -> Void
+
+    private var isSelectable: Bool { isInstalled && !isActive }
+    private var showRetryButton: Bool { downloadError != nil }
+    private var showDownloadButton: Bool { !isInstalled && !isDownloading && downloadError == nil }
+
     var body: some View {
-        Form {
-            Section("Selected Model") {
-                Picker("Model", selection: Bindable(controller.appState).selectedModelType) {
-                    ForEach(WhisperModelType.allCases) { model in
-                        HStack {
-                            Text(model.displayName)
-                            Text("(\(model.sizeDescription))")
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                radioButton
+                    .frame(width: 18, height: 18)
+
+                HStack(spacing: 6) {
+                    Text(model.displayName)
+                        .font(.system(size: 13, weight: .medium))
+
+                    Text(model.sizeDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if isActive {
+                        Text("ACTIVE")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.green)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(.green.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                    }
+                }
+
+                Spacer()
+
+                // Actions — error (Retry) checked before downloading (Cancel)
+                if isActive {
+                    Text("Active")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                } else if isInstalled {
+                    Button("Delete", action: onDelete)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(.quaternary)
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                } else if showRetryButton {
+                    Button("Retry", action: onRetry)
+                        .font(.caption)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                } else if isDownloading {
+                    HStack(spacing: 8) {
+                        if let progress = downloadProgress {
+                            Text("\(Int(progress * 100))%")
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        .tag(model)
-                    }
-                }
-
-                Text(controller.appState.selectedModelType.qualityDescription)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Model File") {
-                let modelManager = ModelManager()
-                let path = modelManager.modelPath(for: controller.appState.selectedModelType).path
-
-                LabeledContent("Status") {
-                    if controller.appState.isModelAvailable {
-                        Label("Installed", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    } else {
-                        Label("Not Found", systemImage: "xmark.circle")
+                        Button("Cancel", action: onCancel)
+                            .font(.caption)
                             .foregroundStyle(.red)
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(.quaternary)
+                            .clipShape(RoundedRectangle(cornerRadius: 5))
                     }
-                }
-
-                LabeledContent("Expected Path") {
-                    Text(path)
+                } else if showDownloadButton {
+                    Button("Download", action: onDownload)
                         .font(.caption)
-                        .textSelection(.enabled)
+                        .disabled(anyDownloadActive)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if isSelectable { onSelect() }
+            }
+            .background(isActive ? Color.green.opacity(0.06) : Color.clear)
+
+            // Download progress bar
+            if isDownloading, let progress = downloadProgress {
+                VStack(alignment: .leading, spacing: 4) {
+                    ProgressView(value: progress)
+                        .tint(.blue)
+
+                    let downloaded = Int64(progress * Double(model.approximateSize))
+                    let formatter = ByteCountFormatter()
+                    Text("\(formatter.string(fromByteCount: downloaded)) of \(model.sizeDescription)")
+                        .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }
+                .padding(.leading, 46)
+                .padding(.trailing, 16)
+                .padding(.bottom, 12)
+            }
 
-                if !controller.appState.isModelAvailable {
-                    if controller.appState.isDownloading {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ProgressView(value: controller.appState.downloadProgress ?? 0)
-                            HStack {
-                                Text("\(Int((controller.appState.downloadProgress ?? 0) * 100))%")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Button("Cancel") {
-                                    modelManager.cancelDownload()
-                                    controller.appState.downloadProgress = nil
-                                }
-                                .font(.caption)
-                            }
-                        }
-                    } else {
-                        Button("Download \(controller.appState.selectedModelType.displayName) (\(controller.appState.selectedModelType.sizeDescription))") {
-                            startDownload(modelManager: modelManager)
-                        }
-
-                        Text(modelManager.modelInstructions(for: controller.appState.selectedModelType))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Button("Refresh") {
-                    controller.refreshStatus()
-                }
+            // Error message
+            if let error = downloadError {
+                Text("Download failed — \(error)")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.leading, 46)
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 12)
             }
         }
-        .formStyle(.grouped)
-        .padding()
+    }
+
+    @ViewBuilder
+    private var radioButton: some View {
+        if isInstalled || isActive {
+            Circle()
+                .strokeBorder(isActive ? .green : .secondary.opacity(0.5), lineWidth: 2)
+                .background(
+                    Circle()
+                        .fill(isActive ? .green : .clear)
+                        .padding(4)
+                )
+        } else {
+            Circle()
+                .strokeBorder(.secondary.opacity(0.2), lineWidth: 2)
+        }
     }
 }
