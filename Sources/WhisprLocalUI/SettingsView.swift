@@ -283,9 +283,10 @@ private struct ModelRow: View {
     let onRetry: () -> Void
     let onDelete: () -> Void
 
-    private var isSelectable: Bool { isInstalled && !isActive }
+    private var isSelectable: Bool { isInstalled && !(isActive && isInstalled) }
     private var showRetryButton: Bool { downloadError != nil }
     private var showDownloadButton: Bool { !isInstalled && !isDownloading && downloadError == nil }
+    private var isActiveAndInstalled: Bool { isActive && isInstalled }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -301,7 +302,7 @@ private struct ModelRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    if isActive {
+                    if isActive && isInstalled {
                         Text("ACTIVE")
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(.green)
@@ -315,7 +316,7 @@ private struct ModelRow: View {
                 Spacer()
 
                 // Actions — error (Retry) checked before downloading (Cancel)
-                if isActive {
+                if isActive && isInstalled {
                     Text("Active")
                         .font(.caption)
                         .foregroundStyle(.green)
@@ -363,7 +364,7 @@ private struct ModelRow: View {
             .onTapGesture {
                 if isSelectable { onSelect() }
             }
-            .background(isActive ? Color.green.opacity(0.06) : Color.clear)
+            .background(isActive && isInstalled ? Color.green.opacity(0.06) : Color.clear)
 
             // Download progress bar
             if isDownloading, let progress = downloadProgress {
@@ -396,12 +397,12 @@ private struct ModelRow: View {
 
     @ViewBuilder
     private var radioButton: some View {
-        if isInstalled || isActive {
+        if isInstalled {
             Circle()
-                .strokeBorder(isActive ? .green : .secondary.opacity(0.5), lineWidth: 2)
+                .strokeBorder((isActive && isInstalled) ? .green : .secondary.opacity(0.5), lineWidth: 2)
                 .background(
                     Circle()
-                        .fill(isActive ? .green : .clear)
+                        .fill((isActive && isInstalled) ? .green : .clear)
                         .padding(4)
                 )
         } else {
