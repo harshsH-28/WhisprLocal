@@ -5,6 +5,7 @@ import WhisprLocalCore
 public struct MenuBarView: View {
     let controller: DictationController
     @State private var showCopiedFeedback = false
+    @Environment(\.openWindow) private var openWindow
 
     public init(controller: DictationController) {
         self.controller = controller
@@ -37,7 +38,7 @@ public struct MenuBarView: View {
                    !controller.appState.recordingState.isRecording,
                    !controller.appState.recordingState.isTranscribing {
                     Divider().padding(.horizontal, 16)
-                    SetupPromptSection(appState: controller.appState)
+                    SetupPromptSection(appState: controller.appState, onOpenSettings: openSettingsWindow)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
                 }
@@ -65,13 +66,19 @@ public struct MenuBarView: View {
 
                 // Footer
                 Divider().padding(.horizontal, 16)
-                FooterSection()
+                FooterSection(onOpenSettings: openSettingsWindow)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
             }
         }
         .frame(width: 320)
         .frame(maxHeight: 400)
+    }
+
+    private func openSettingsWindow() {
+        NSApp.setActivationPolicy(.regular)
+        openWindow(id: "settings")
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
@@ -156,6 +163,7 @@ private struct ErrorBanner: View {
 
 private struct SetupPromptSection: View {
     let appState: AppState
+    let onOpenSettings: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -175,17 +183,8 @@ private struct SetupPromptSection: View {
                     .foregroundStyle(.orange)
             }
 
-            Button("Open Setup...") {
-                DispatchQueue.main.async {
-                    NSApp.activate(ignoringOtherApps: true)
-                    if #available(macOS 14, *) {
-                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                    } else {
-                        NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-                    }
-                }
-            }
-            .font(.caption)
+            Button("Open Setup...", action: onOpenSettings)
+                .font(.caption)
         }
     }
 }
@@ -248,18 +247,11 @@ private struct ShortcutSection: View {
 }
 
 private struct FooterSection: View {
+    let onOpenSettings: () -> Void
+
     var body: some View {
         HStack {
-            Button("Settings...") {
-                DispatchQueue.main.async {
-                    NSApp.activate(ignoringOtherApps: true)
-                    if #available(macOS 14, *) {
-                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                    } else {
-                        NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-                    }
-                }
-            }
+            Button("Settings...", action: onOpenSettings)
             Spacer()
             Button("Quit") {
                 NSApp.terminate(nil)

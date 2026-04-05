@@ -14,9 +14,18 @@ struct WhisprLocalApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Settings {
+        Window("WhisprLocal Settings", id: "settings") {
             SettingsView(controller: appDelegate.controller)
+                .onAppear {
+                    NSApp.setActivationPolicy(.regular)
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+                .onDisappear {
+                    NSApp.setActivationPolicy(.accessory)
+                }
         }
+        .defaultSize(width: 520, height: 440)
+        .windowResizability(.contentSize)
     }
 }
 

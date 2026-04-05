@@ -31,6 +31,7 @@ public struct SettingsView: View {
                 .tag(2)
         }
         .frame(width: 520, height: 440)
+        .fixedSize()
     }
 }
 
