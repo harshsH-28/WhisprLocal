@@ -22,14 +22,38 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 
 echo "Building $APP_NAME ($BUILD_CONFIG)..."
 
-# Build with SPM
+# Build — prefer xcodebuild (handles resource bundles correctly) with swift build fallback
 cd "$PROJECT_DIR"
-if [ "$BUILD_CONFIG" = "release" ]; then
-    swift build -c release
-    BUILD_DIR=".build/release"
+SPM_CONFIG="release"
+[ "$BUILD_CONFIG" != "release" ] && SPM_CONFIG="debug"
+
+USE_XCODEBUILD=false
+if command -v xcodebuild &>/dev/null && xcodebuild -version &>/dev/null 2>&1; then
+    USE_XCODEBUILD=true
+fi
+
+if [ "$USE_XCODEBUILD" = true ]; then
+    echo "Using xcodebuild..."
+    XCODE_DERIVED="$PROJECT_DIR/.build/xcode"
+    xcodebuild -scheme WhisprLocal -configuration "$([ "$SPM_CONFIG" = "release" ] && echo Release || echo Debug)" \
+        -derivedDataPath "$XCODE_DERIVED" build 2>&1 | tail -5
+    BUILD_DIR="$XCODE_DERIVED/Build/Products/$([ "$SPM_CONFIG" = "release" ] && echo Release || echo Debug)"
 else
-    swift build
-    BUILD_DIR=".build/debug"
+    echo "Using swift build (no Xcode)..."
+    swift build -c "$SPM_CONFIG"
+    BUILD_DIR=".build/arm64-apple-macosx/$SPM_CONFIG"
+
+    # Patch SPM resource bundle accessor to use resourceURL (Contents/Resources/)
+    # instead of bundleURL (.app root) — matches what Xcode generates natively
+    for accessor in .build/arm64-apple-macosx/${SPM_CONFIG}/*.build/DerivedSources/resource_bundle_accessor.swift; do
+        if [ -f "$accessor" ]; then
+            sed -i '' 's/Bundle\.main\.bundleURL/Bundle.main.resourceURL!/g' "$accessor"
+            echo "Patched accessor: $(basename "$(dirname "$(dirname "$accessor")")")"
+        fi
+    done
+
+    # Rebuild with patched accessor
+    swift build -c "$SPM_CONFIG"
 fi
 
 # Create .app bundle structure
@@ -65,11 +89,11 @@ if [ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]; then
     echo "Copied app icon"
 fi
 
-# Copy SPM resource bundles to app root (where Bundle.main.bundleURL resolves)
-# SPM generates Bundle.module to look at Bundle.main.bundleURL/<name>.bundle
+# Copy SPM resource bundles to Contents/Resources/
+# xcodebuild generates accessor checking resourceURL; patched swift build does the same
 for bundle in "$BUILD_DIR"/*.bundle; do
     if [ -d "$bundle" ]; then
-        cp -R "$bundle" "$APP_DIR/"
+        cp -R "$bundle" "$RESOURCES_DIR/"
         echo "Copied $(basename "$bundle")"
     fi
 done
