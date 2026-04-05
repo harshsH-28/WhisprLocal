@@ -65,10 +65,11 @@ if [ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]; then
     echo "Copied app icon"
 fi
 
-# Copy SPM resource bundles (e.g., KeyboardShortcuts localization)
+# Copy SPM resource bundles to app root (where Bundle.main.bundleURL resolves)
+# SPM generates Bundle.module to look at Bundle.main.bundleURL/<name>.bundle
 for bundle in "$BUILD_DIR"/*.bundle; do
     if [ -d "$bundle" ]; then
-        cp -R "$bundle" "$RESOURCES_DIR/"
+        cp -R "$bundle" "$APP_DIR/"
         echo "Copied $(basename "$bundle")"
     fi
 done
