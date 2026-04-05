@@ -36,6 +36,7 @@ if [ "$USE_XCODEBUILD" = true ]; then
     echo "Using xcodebuild..."
     XCODE_DERIVED="$PROJECT_DIR/.build/xcode"
     xcodebuild -scheme WhisprLocal -configuration "$([ "$SPM_CONFIG" = "release" ] && echo Release || echo Debug)" \
+        -destination 'platform=macOS' \
         -derivedDataPath "$XCODE_DERIVED" build 2>&1 | tail -5
     BUILD_DIR="$XCODE_DERIVED/Build/Products/$([ "$SPM_CONFIG" = "release" ] && echo Release || echo Debug)"
 else
