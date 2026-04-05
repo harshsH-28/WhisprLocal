@@ -175,8 +175,13 @@ private struct SetupPromptSection: View {
                     .foregroundStyle(.orange)
             }
 
-            SettingsLink {
-                Text("Open Setup...")
+            Button("Open Setup...") {
+                NSApp.activate(ignoringOtherApps: true)
+                if #available(macOS 14, *) {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                } else {
+                    NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+                }
             }
             .font(.caption)
         }
@@ -243,8 +248,13 @@ private struct ShortcutSection: View {
 private struct FooterSection: View {
     var body: some View {
         HStack {
-            SettingsLink {
-                Text("Settings...")
+            Button("Settings...") {
+                NSApp.activate(ignoringOtherApps: true)
+                if #available(macOS 14, *) {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                } else {
+                    NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+                }
             }
             Spacer()
             Button("Quit") {
