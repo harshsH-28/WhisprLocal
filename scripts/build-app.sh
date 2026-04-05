@@ -65,6 +65,14 @@ if [ -f "$PROJECT_DIR/Resources/AppIcon.icns" ]; then
     echo "Copied app icon"
 fi
 
+# Copy SPM resource bundles (e.g., KeyboardShortcuts localization)
+for bundle in "$BUILD_DIR"/*.bundle; do
+    if [ -d "$bundle" ]; then
+        cp -R "$bundle" "$RESOURCES_DIR/"
+        echo "Copied $(basename "$bundle")"
+    fi
+done
+
 # Create PkgInfo
 echo -n "APPL????" > "$CONTENTS_DIR/PkgInfo"
 
